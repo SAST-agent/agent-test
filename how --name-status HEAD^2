@@ -1,0 +1,52 @@
+[33mcommit 42992d63b7742698a9f945e85294af2487cb9bce[m
+Author: 张子菡 <2024010697@secoder.net>
+Date:   Sun Dec 14 14:18:58 2025 +0800
+
+    feat: add document board
+
+A	.vs/AgentPlayer/FileContentIndex/696ded96-a16e-40bd-842f-24d87fca1d63.vsidx
+M	.vs/AgentPlayer/v17/.suo
+M	.vs/AgentPlayer/v17/DocumentLayout.backup.json
+M	.vs/AgentPlayer/v17/DocumentLayout.json
+M	Assembly-CSharp.csproj
+A	Assets/CSharpCode/DocumentClose.cs
+A	Assets/CSharpCode/DocumentClose.cs.meta
+M	Assets/Scenes/SC Demo.unity
+A	Assets/event.prefab
+A	Assets/event.prefab.meta
+M	Assets/npc1.prefab
+M	Library/ArtifactDB
+M	Library/Bee/TundraBuildState.state
+M	Library/Bee/TundraBuildState.state.map
+M	Library/Bee/artifacts/rsp/4747638433968585886.rsp
+M	Library/Bee/backend1.traceevents
+M	Library/Bee/backend2.traceevents
+M	Library/Bee/buildprogram0.traceevents
+M	Library/Bee/fullprofile.json
+M	Library/Bee/tundra.digestcache
+M	Library/Bee/tundra.log.json
+M	Library/BurstCache/JIT/BurstCacheManifest.cm
+M	Library/BurstCache/JIT/Hashes/3dc5897da031517a8d5ab0e81f722310.bhc
+M	Library/BurstCache/JIT/Hashes/4a11bc8a23c1cfa0f4923becd8b6a98b.bhc
+M	Library/BurstCache/JIT/Hashes/5ed5015b734bdfe5c2aa268fb2708b8c.bhc
+M	Library/BurstCache/JIT/Hashes/7137a5c6727cd39587d613225befd2da.bhc
+M	Library/BurstCache/JIT/Hashes/8bd375117381c8f40ed1fc10f10e1697.bhc
+M	Library/BurstCache/JIT/Hashes/a110ffe6b760e4b56cb86ae44bc7857d.bhc
+M	Library/BurstCache/JIT/Hashes/beb497e134b24e0d443f6a91ee099283.bhc
+M	Library/BurstCache/JIT/Hashes/c86ed7598bd91057bc1f5b7c62af9475.bhc
+M	Library/BurstCache/JIT/Hashes/e280f7a2a7bd4e990528db890a95b139.bhc
+M	Library/BurstCache/JIT/Hashes/e331c7b1fa5090f90a7bd7c89ae8bb33.bhc
+M	Library/BurstCache/JIT/Hashes/eb5762c176c563408800b67be30a9bca.bhc
+M	Library/InspectorExpandedItems.asset
+M	Library/SceneVisibilityState.asset
+M	Library/ScriptAssemblies/Assembly-CSharp.dll
+M	Library/ScriptAssemblies/Assembly-CSharp.pdb
+M	Library/Search/transactions.db
+M	Library/ShaderCache/EditorEncounteredVariants
+M	Library/SourceAssetDB
+M	Library/StateCache/SceneView/88/88f3ed042082d22662f6bf299716393e.json
+M	Library/ilpp.pid
+M	Logs/AssetImportWorker0.log
+M	Logs/AssetImportWorker1.log
+M	Logs/shadercompiler-UnityShaderCompiler.exe0.log
+M	UserSettings/Layouts/default-2022.dwlt
