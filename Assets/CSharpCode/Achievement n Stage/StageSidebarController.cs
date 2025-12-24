@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using TMPro;
 using UnityEngine;
 
@@ -20,13 +20,13 @@ public class StageSidebarController : MonoBehaviour
     private void Awake()
     {
         panel.anchoredPosition = hiddenPos;
-        // ³õÊ¼²»ÏÔÊ¾ÌáÊ¾
+        // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½Ê¾
         if (hintText != null)
             hintText.gameObject.SetActive(false);
     }
 
     /// <summary>
-    /// ¶ÔÍâ½Ó¿Ú£ºÏÔÊ¾ Stage ½âËø³É¾Í
+    /// ï¿½ï¿½ï¿½ï¿½Ó¿Ú£ï¿½ï¿½ï¿½Ê¾ Stage ï¿½ï¿½ï¿½ï¿½ï¿½É¾ï¿½
     /// </summary>
     public void ShowStageUnlocked(int stage, string hint = null)
     {
@@ -36,8 +36,8 @@ public class StageSidebarController : MonoBehaviour
         if (hintText == null) Debug.LogError("hintText is NULL");
         if (panel == null) Debug.LogError("panel is NULL");
 
-        stageText.text = $"Stage {stage} ½âËø£¡";
-        // Content£¨ÌáÊ¾£©
+        stageText.text = $"Stage {stage} ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½";
+        // Contentï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½
         if (string.IsNullOrEmpty(hint))
         {
             hintText.gameObject.SetActive(false);

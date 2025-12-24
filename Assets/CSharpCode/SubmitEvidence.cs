@@ -18,6 +18,10 @@ public class SubmitEvidence : MonoBehaviour
 
     private exitInteraction exitBtn;
 
+    [Header("WS (drag in Inspector)")]
+    public WsClient wsClient;                         // ✅ 直接拖引用
+    public WebInteractionController webBridge;         // ✅ 可选：需要 token 时用
+
     // ======================
     // 证据映射
     // ======================
@@ -48,7 +52,7 @@ public class SubmitEvidence : MonoBehaviour
     private class WsActionRequest
     {
         public string request;
-        public string token;
+        public string token;               // 可空：很多协议不要求 action 再带 token
         public ChatActionContent content;
     }
 
@@ -72,8 +76,19 @@ public class SubmitEvidence : MonoBehaviour
     // ======================
     private void Start()
     {
-        i = player.GetComponent<isInteraction>();
-        exitBtn = dialoguePanel.transform.GetChild(2).GetComponent<exitInteraction>();
+        if (player != null)
+            i = player.GetComponent<isInteraction>();
+
+        if (dialoguePanel != null && dialoguePanel.transform.childCount > 2)
+            exitBtn = dialoguePanel.transform.GetChild(2).GetComponent<exitInteraction>();
+
+        // 兜底：如果没拖 wsClient，就用单例（你新 WsClient 支持 Instance）
+        if (wsClient == null)
+            wsClient = WsClient.Instance;
+
+        // 兜底：如果没拖 webBridge，尝试场景里找
+        if (webBridge == null)
+            webBridge = FindObjectOfType<WebInteractionController>();
     }
 
     private void Update()
@@ -89,7 +104,13 @@ public class SubmitEvidence : MonoBehaviour
     // ======================
     public void Submit()
     {
-        if (!WsClient.Instance.IsConnected)
+        if (wsClient == null)
+        {
+            Debug.LogError("[SubmitEvidence] wsClient is null (drag WsClient in Inspector).");
+            return;
+        }
+
+        if (!wsClient.IsConnected)
         {
             Debug.LogError("[SubmitEvidence] WS not connected");
             return;
@@ -103,13 +124,15 @@ public class SubmitEvidence : MonoBehaviour
 
         CollectSelectedEvidences();
         CollectQuestionAndNpc();
-
         SendChatRequest();
 
-        // 立刻更新本地状态（与原逻辑一致）
-        exitBtn.refreshAll();
-        i.changeIsSubmit(false);
-        i.changeIsPaused(false);
+        // 本地状态更新（保持原逻辑）
+        if (exitBtn != null) exitBtn.refreshAll();
+        if (i != null)
+        {
+            i.changeIsSubmit(false);
+            i.changeIsPaused(false);
+        }
     }
 
     // ======================
@@ -119,8 +142,12 @@ public class SubmitEvidence : MonoBehaviour
     {
         evidences.Clear();
 
+        if (itemBar == null) return;
+
         for (int i = 1; i < 3; i++)
         {
+            if (itemBar.transform.childCount <= i) continue;
+
             Transform evidenceSet = itemBar.transform.GetChild(i);
 
             for (int j = 0; j < evidenceSet.childCount; j++)
@@ -150,11 +177,11 @@ public class SubmitEvidence : MonoBehaviour
     // ======================
     private void CollectQuestionAndNpc()
     {
-        var submitDlg = InputPanel.GetComponent<submitDialogue>();
+        var submitDlg = InputPanel != null ? InputPanel.GetComponent<submitDialogue>() : null;
         if (submitDlg != null)
             question = submitDlg.getQuestion();
 
-        var dlg = dialoguePanel.GetComponent<inDialogue>();
+        var dlg = dialoguePanel != null ? dialoguePanel.GetComponent<inDialogue>() : null;
         if (dlg != null)
             npc = dlg.getNpcName();
     }
@@ -166,10 +193,13 @@ public class SubmitEvidence : MonoBehaviour
     {
         waitingResponse = true;
 
-        WsActionRequest req = new WsActionRequest
+        var req = new WsActionRequest
         {
             request = "action",
-            token = ApiConfigService.Instance.token,
+
+            // ✅ 方案A：默认不需要 token（连接时已经带了）
+            token = null,
+
             content = new ChatActionContent
             {
                 action = "chat",
@@ -179,8 +209,12 @@ public class SubmitEvidence : MonoBehaviour
             }
         };
 
-        WsClient.Instance.ExpectNextMessage(OnChatResponse);
-        WsClient.Instance.Send(JsonUtility.ToJson(req));
+        // 如果你的协议强制 action 里必须带 token：
+        // 取消下面注释，并确保 WebInteractionController 暴露一个 GetTokenB64()
+        // req.token = webBridge != null ? webBridge.GetTokenB64() : null;
+
+        wsClient.ExpectNextMessage(OnChatResponse);
+        wsClient.Send(JsonUtility.ToJson(req));
     }
 
     // ======================
@@ -207,15 +241,16 @@ public class SubmitEvidence : MonoBehaviour
         if (resp == null || string.IsNullOrEmpty(resp.response))
             return;
 
-        // 写到对话框
-        var chat =
-            dialoguePanel.transform.GetChild(1)
-                .GetComponent<TextMeshProUGUI>();
+        // 写到对话框（保持你的路径：dialoguePanel child(1) 是文本）
+        if (dialoguePanel != null && dialoguePanel.transform.childCount > 1)
+        {
+            var chat = dialoguePanel.transform.GetChild(1).GetComponent<TextMeshProUGUI>();
+            if (chat != null) chat.text = resp.response;
+        }
 
-        chat.text = resp.response;
-
-        // 关闭提交面板（与原 PostChatAndClose 行为一致）
-        transform.parent.gameObject.SetActive(false);
+        // 关闭提交面板（保持原行为）
+        if (transform.parent != null)
+            transform.parent.gameObject.SetActive(false);
     }
 
     // ======================
@@ -223,14 +258,35 @@ public class SubmitEvidence : MonoBehaviour
     // ======================
     public void submitEvidenceExternal(List<string> submitEvidenceIds)
     {
+        if (wsClient == null)
+        {
+            Debug.LogError("[SubmitEvidence] wsClient is null.");
+            return;
+        }
+
+        if (!wsClient.IsConnected)
+        {
+            Debug.LogError("[SubmitEvidence] WS not connected");
+            return;
+        }
+
+        if (waitingResponse)
+        {
+            Debug.Log("[SubmitEvidence] Already waiting response");
+            return;
+        }
+
         evidences.Clear();
-        evidences.AddRange(submitEvidenceIds);
+        if (submitEvidenceIds != null)
+            evidences.AddRange(submitEvidenceIds);
 
         CollectQuestionAndNpc();
         SendChatRequest();
 
-        exitBtn.refreshAll();
-        i.changeIsSubmit(false);
-        i.changeIsPaused(false);
+        if (i != null)
+        {
+            i.changeIsSubmit(false);
+            i.changeIsPaused(false);
+        }
     }
 }

@@ -1,17 +1,29 @@
-ï»¿using System;
+using System;
 using UnityEngine;
 
+/// <summary>
+/// WsClient
+/// ----------------------------
+/// ÇáÁ¿ WS ¡°¿Í»§¶Ë¡±
+/// - ²»¸ºÔğÕæÕı½¨Á¢ WebSocket£¨WebGL ÏÂÓÉ JS ²å¼ş Connect_ws/Send_ws ×ö£©
+/// - Ö»¸ºÔğ£º
+///   1) Í³Ò»·¢ËÍ payload£¨×ª½»¸ø WebInteractionController£©
+///   2) ·ÇÖ¡ÏûÏ¢µÄ¡°µÈ´ıÏÂÒ»Ìõ»Ø°ü¡±»úÖÆ£¨ExpectNextMessage£©
+///   3) Á¬½Ó×´Ì¬¹ÜÀí£¨IsConnected / OnConnected£©
+/// </summary>
 public class WsClient : MonoBehaviour
 {
     public static WsClient Instance { get; private set; }
 
+    [Header("Bridge (drag WebInteractionController here)")]
+    public WebInteractionController bridge;
+
     public bool IsConnected { get; private set; } = false;
 
-    // å½“å‰â€œæœŸå¾…â€çš„å›åŒ…å¤„ç†å™¨ï¼ˆä¸€æ¬¡åªå…è®¸ä¸€ä¸ªï¼‰
-    private Action<string> nextMessageHandler;
-
-    // ğŸ”” WS è¿æ¥å®Œæˆäº‹ä»¶
     public event Action OnConnected;
+
+    // µÈ´ıÏÂÒ»Ìõ¡°·ÇÖ¡ÏûÏ¢¡±µÄ»Øµ÷£¨achievement/chat µÈ£©
+    private Action<string> nextMessageCb;
 
     private void Awake()
     {
@@ -20,85 +32,64 @@ public class WsClient : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
         DontDestroyOnLoad(gameObject);
     }
 
-    // ======================
-    // WS ç”Ÿå‘½å‘¨æœŸï¼ˆå”¯ä¸€ï¼‰
-    // ======================
-
     /// <summary>
-    /// ç”± WS åº•å±‚åœ¨è¿æ¥æˆåŠŸæ—¶è°ƒç”¨
+    /// ÓÉ WebInteractionController ÔÚÊÕµ½µÚÒ»Ìõ WS ÏûÏ¢Ê±µ÷ÓÃ
     /// </summary>
-    public void OnOpen()
+    public void MarkConnected()
     {
+        if (IsConnected) return;
+
         IsConnected = true;
         Debug.Log("[WsClient] Connected");
-
-        // â­ éå¸¸å…³é”®
         OnConnected?.Invoke();
     }
 
     /// <summary>
-    /// ç”± WS åº•å±‚åœ¨æ–­å¼€æ—¶è°ƒç”¨
+    /// ·¢ËÍ WS payload£¨ÍêÕû JSON ×Ö·û´®£©
     /// </summary>
-    public void OnClose()
+    public void Send(string payload)
     {
-        IsConnected = false;
-        Debug.Log("[WsClient] Disconnected");
-    }
+        if (string.IsNullOrWhiteSpace(payload))
+            return;
 
-    // ======================
-    // ä¸šåŠ¡æ¥å£
-    // ======================
-
-    /// <summary>
-    /// æ³¨å†Œâ€œä¸‹ä¸€æ¡æ¶ˆæ¯â€çš„å¤„ç†å™¨ï¼ˆä¸€æ¬¡æ€§ï¼‰
-    /// </summary>
-    public void ExpectNextMessage(Action<string> handler)
-    {
-        nextMessageHandler = handler;
-    }
-
-    /// <summary>
-    /// ç»Ÿä¸€å‘é€ WS æ–‡æœ¬
-    /// </summary>
-    public void Send(string json)
-    {
-        Debug.Log("[WsClient] Send: " + json);
-        Send_ws(json);
-    }
-
-    // ======================
-    // WS æ¶ˆæ¯å…¥å£
-    // ======================
-
-    /// <summary>
-    // å¿…é¡»ç”± WS åº•å±‚åœ¨æ”¶åˆ°æ¶ˆæ¯æ—¶è°ƒç”¨
-    /// </summary>
-    public void OnMessage(string message)
-    {
-        Debug.Log("[WsClient] Receive: " + message);
-
-        if (nextMessageHandler != null)
+        if (bridge == null)
         {
-            var handler = nextMessageHandler;
-            nextMessageHandler = null; // é˜²æ­¢ä¸²åŒ…
-            handler.Invoke(message);
+            Debug.LogError("[WsClient] bridge is NULL, cannot Send. Please drag WebInteractionController into WsClient.bridge");
+            return;
+        }
+
+        bridge.SendRawWs(payload);
+    }
+
+    /// <summary>
+    /// ÆÚ´ıÏÂÒ»Ìõ¡°·ÇÖ¡ÏûÏ¢¡±£¨judger ·µ»ØµÄ recv.content£¬µ«²»ÊÇ Frame£©
+    /// ÓÃ·¨£ºWsClient.Instance.ExpectNextMessage(cb); È»ºó Send(action...)
+    /// </summary>
+    public void ExpectNextMessage(Action<string> cb)
+    {
+        nextMessageCb = cb;
+    }
+
+    /// <summary>
+    /// ÓÉ WebInteractionController ÔÚÅĞ¶¨¡°²»ÊÇ Frame¡±µÄ»Ø°üÊ±µ÷ÓÃ
+    /// </summary>
+    public void DispatchNonFrameMessage(string content)
+    {
+        var cb = nextMessageCb;
+        nextMessageCb = null;
+
+        if (cb != null)
+        {
+            cb(content);
         }
         else
         {
-            Debug.LogWarning("[WsClient] No handler for message");
+            // Ã»ÓĞÈËÔÚµÈ£¬¾Í´òÓ¡Ò»ÏÂ£¬·½±ãµ÷ÊÔ
+            Debug.Log("[WsClient] Non-frame message received but no callback is waiting:\n" + content);
         }
-    }
-
-    // ======================
-    // ä½ å·²æœ‰çš„åº•å±‚å‘é€
-    // ======================
-    private void Send_ws(string msg)
-    {
-        // webSocket.Send(msg);
     }
 }

@@ -1,7 +1,8 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Networking;
+using System.Collections.Generic;
 
 public class exitInteraction : MonoBehaviour
 {
@@ -20,10 +21,17 @@ public class exitInteraction : MonoBehaviour
     public StageSidebarController stagePanel;
 
     [Header("Achievement")]
-    public AchievementSidebarController achievementSidebar;
+    public AchievementSidebarController achievementSidebar;   // 新增
 
     [Header("NPC")]
     public NpcVisibilityManager npcVisibilityManager;
+
+    // ======================
+    // Backend
+    // ======================
+    [Header("Backend")]
+    public string baseUrl = "http://localhost:8082";
+    public float timeoutSeconds = 10f;
 
     // ======================
     // Stage / Evidence 状态
@@ -32,7 +40,7 @@ public class exitInteraction : MonoBehaviour
     private bool evidence1Get = false;
     private bool evidence2Get = false;
 
-    private readonly HashSet<string> otherEvidenceIds = new();
+    private HashSet<string> otherEvidenceIds = new HashSet<string>();
 
     // ======================
     // NPC 问号
@@ -43,21 +51,8 @@ public class exitInteraction : MonoBehaviour
     // ======================
     // Achievement 状态
     // ======================
-    private readonly HashSet<int> achievementIds = new();
+    private HashSet<int> achievementIds = new HashSet<int>();
     private bool achievementInited = false;
-
-    // ======================
-    // WS 调度状态
-    // ======================
-    private enum RefreshStep
-    {
-        None,
-        Stage,
-        OtherEvidence,
-        Achievement
-    }
-
-    private RefreshStep refreshStep = RefreshStep.None;
 
     private void Start()
     {
@@ -74,6 +69,7 @@ public class exitInteraction : MonoBehaviour
 
         i.changeIsTalk(false);
         EventSystem.current.SetSelectedGameObject(null);
+
         StartCoroutine(CloseDialogueLater());
     }
 
@@ -84,38 +80,21 @@ public class exitInteraction : MonoBehaviour
     }
 
     // ======================
-    // ⭐ 对外总刷新接口
-    // ======================
-    public void refreshAll()
-    {
-        if (!WsClient.Instance.IsConnected)
-        {
-            Debug.LogError("[exitInteraction] WS not connected");
-            return;
-        }
-
-        refreshStep = RefreshStep.Stage;
-        RequestStage();
-
-        sumBubble.RefreshNpcMark();
-    }
-
-    // ======================
     // Stage
     // ======================
-    private void RequestStage()
+    private IEnumerator FetchStage()
     {
-        SendAction("stage");
-        WsClient.Instance.ExpectNextMessage(OnStageResponse);
-    }
+        string url = $"{baseUrl}/api/stage";
+        using var req = UnityWebRequest.Get(url);
+        req.timeout = Mathf.CeilToInt(timeoutSeconds);
 
-    private void OnStageResponse(string json)
-    {
-        var resp = JsonUtility.FromJson<StageResponse>(json);
+        yield return req.SendWebRequest();
+
+        if (req.result != UnityWebRequest.Result.Success)
+            yield break;
+
+        var resp = JsonUtility.FromJson<StageResponse>(req.downloadHandler.text);
         OnStageUpdated(resp.stage);
-
-        refreshStep = RefreshStep.OtherEvidence;
-        RequestOtherEvidence();
     }
 
     private void OnStageUpdated(int stage)
@@ -127,34 +106,42 @@ public class exitInteraction : MonoBehaviour
         }
 
         if (stage > currentStage && stagePanel != null)
+        {
             stagePanel.ShowStageUnlocked(stage, GetStageHint(stage));
+        }
 
         currentStage = stage;
 
-        npcVisibilityManager?.RefreshNpcVisibility();
+        if (npcVisibilityManager != null)
+            npcVisibilityManager.RefreshNpcVisibility();
     }
 
     private string GetStageHint(int stage)
     {
         if (stage == 2 || stage == 8)
             return "请查看物品栏，有新的物品！";
+
         if (stage >= 4 && stage <= 7)
             return "请查看线索版，有新的线索！";
+
         return null;
     }
 
     // ======================
-    // Evidence (others)
+    // Evidence
     // ======================
-    private void RequestOtherEvidence()
+    private IEnumerator FetchOtherEvidence()
     {
-        SendAction("others");
-        WsClient.Instance.ExpectNextMessage(OnOtherEvidenceResponse);
-    }
+        string url = $"{baseUrl}/api/evidence/others";
+        using var req = UnityWebRequest.Get(url);
+        req.timeout = Mathf.CeilToInt(timeoutSeconds);
 
-    private void OnOtherEvidenceResponse(string json)
-    {
-        var resp = JsonUtility.FromJson<OtherEvidenceResponse>(json);
+        yield return req.SendWebRequest();
+
+        if (req.result != UnityWebRequest.Result.Success)
+            yield break;
+
+        var resp = JsonUtility.FromJson<OtherEvidenceResponse>(req.downloadHandler.text);
 
         if (resp.evidences != null)
         {
@@ -163,9 +150,6 @@ public class exitInteraction : MonoBehaviour
 
             RefreshEvidenceUI();
         }
-
-        refreshStep = RefreshStep.Achievement;
-        RequestAchievement();
     }
 
     private void RefreshEvidenceUI()
@@ -184,24 +168,29 @@ public class exitInteraction : MonoBehaviour
     }
 
     // ======================
-    // Achievement
+    // ⭐ Achievement
     // ======================
-    private void RequestAchievement()
+    private IEnumerator FetchAchievements()
     {
-        SendAction("achievement");
-        WsClient.Instance.ExpectNextMessage(OnAchievementResponse);
-    }
+        string url = $"{baseUrl}/api/evidence/achievement";
+        using var req = UnityWebRequest.Get(url);
+        req.timeout = Mathf.CeilToInt(timeoutSeconds);
 
-    private void OnAchievementResponse(string json)
-    {
-        var resp = JsonUtility.FromJson<AchievementResponse>(json);
-        if (resp == null || resp.achievements == null) return;
+        yield return req.SendWebRequest();
+
+        if (req.result != UnityWebRequest.Result.Success)
+            yield break;
+
+        var resp = JsonUtility.FromJson<AchievementResponse>(req.downloadHandler.text);
+        if (resp == null || resp.achievements == null)
+            yield break;
 
         OnAchievementsUpdated(resp.achievements);
     }
 
     private void OnAchievementsUpdated(Achievement[] achievements)
     {
+        // 第一次：只记录
         if (!achievementInited)
         {
             achievementIds.Clear();
@@ -212,50 +201,27 @@ public class exitInteraction : MonoBehaviour
             return;
         }
 
+        // 后续：发现新成就 → 弹 Sidebar
         foreach (var a in achievements)
         {
             if (achievementIds.Add(a.id))
             {
-                achievementSidebar?.ShowAchievementUnlocked(
-                    a.name,
-                    a.description
-                );
+                Debug.Log($"[exitInteraction] New achievement: {a.name}");
+
+                if (achievementSidebar != null)
+                {
+                    achievementSidebar.ShowAchievementUnlocked(
+                        a.name,
+                        a.description
+                    );
+                }
             }
         }
     }
 
     // ======================
-    // WS 发送工具
-    // ======================
-    private void SendAction(string action)
-    {
-        WsActionRequest req = new WsActionRequest
-        {
-            request = "action",
-            token = ApiConfigService.Instance.token,
-            content = new ActionContent { action = action }
-        };
-
-        WsClient.Instance.Send(JsonUtility.ToJson(req));
-    }
-
-    // ======================
     // JSON 映射
     // ======================
-    [System.Serializable]
-    private class WsActionRequest
-    {
-        public string request;
-        public string token;
-        public ActionContent content;
-    }
-
-    [System.Serializable]
-    private class ActionContent
-    {
-        public string action;
-    }
-
     [System.Serializable]
     public class StageResponse
     {
@@ -292,5 +258,75 @@ public class exitInteraction : MonoBehaviour
         public Achievement[] achievements;
     }
 
-    public int getStage() => currentStage;
+    public int getStage()
+    {
+        return currentStage;
+    }
+
+    // 进程调用总接口
+    // ✅ 新增：由 FrameDispatcher 调用（方案A核心）
+    public void ApplyResultState(FrameDispatcher.ResultState state)
+    {
+        if (state == null) return;
+
+        // -----------------
+        // 1) Stage 提示逻辑：复用你原来的 OnStageUpdated
+        // -----------------
+        OnStageUpdated(state.stage);
+
+        // -----------------
+        // 2) Evidence：用 state.visible_evidences 驱动 UI
+        //    （替代 otherEvidenceIds + /api/evidence/others）
+        // -----------------
+        if (state.visible_evidences != null && itemBar != null)
+        {
+            bool has111 = state.visible_evidences.Contains("111");
+            bool has711 = state.visible_evidences.Contains("711");
+
+            itemBar.transform.Find("Bar/evidence1")?.gameObject.SetActive(has111);
+            itemBar.transform.Find("Bar/evidence2")?.gameObject.SetActive(has711);
+        }
+
+        // -----------------
+        // 3) Achievement：用 state.achievements（替代 /api/evidence/achievement）
+        // -----------------
+        if (state.achievements != null)
+        {
+            // 第一次只记录
+            if (!achievementInited)
+            {
+                achievementIds.Clear();
+                foreach (var a in state.achievements) achievementIds.Add(a.id);
+                achievementInited = true;
+            }
+            else
+            {
+                // 后续出现新成就 -> 弹 Sidebar
+                foreach (var a in state.achievements)
+                {
+                    if (achievementIds.Add(a.id))
+                    {
+                        if (achievementSidebar != null)
+                            achievementSidebar.ShowAchievementUnlocked(a.name, a.description);
+                    }
+                }
+            }
+        }
+
+        // -----------------
+        // 4) NPC 可见 / 问号：建议交给各自脚本吃 state
+        // -----------------
+        npcVisibilityManager?.ApplyResultState(state);
+        sumBubble?.ApplyResultState(state); // 如果你给 NpcSumBubble 加了这个入口
+    }
+
+    // ✅ 修改 refreshAll：不再发 HTTP
+    public void refreshAll()
+    {
+        // 方案A下：refreshAll 不做网络拉取
+        // 如果你想“强制刷新显示”，应该等下一帧 result_state 推送即可。
+        // 可选：仅做一些纯本地刷新（不依赖网络）
+        sumBubble?.RefreshNpcMark(); // 这行也可以删，最好让它吃 state.npc_marks
+    }
+
 }

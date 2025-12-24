@@ -1,4 +1,5 @@
-using System.Collections;
+﻿using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
@@ -17,17 +18,52 @@ public class AchievementSidebarController : MonoBehaviour
 
     private Coroutine currentRoutine;
 
+    // ===== 方案A新增：成就状态缓存 =====
+    private readonly HashSet<int> knownAchievementIds = new HashSet<int>();
+    private bool inited = false;
+
     private void Awake()
     {
-        panel.anchoredPosition = hiddenPos;
+        if (panel != null)
+            panel.anchoredPosition = hiddenPos;
 
-        // ��ʼ����ʾ����
+        // 初始不显示描述
         if (descriptionText != null)
             descriptionText.gameObject.SetActive(false);
     }
 
+    // =================================================
+    // ✅ 方案A核心：由 FrameDispatcher 每帧调用
+    // =================================================
+    public void ApplyResultState(FrameDispatcher.ResultState state)
+    {
+        if (state == null || state.achievements == null)
+            return;
+
+        // 第一次：只记录，不弹窗（避免一进来把历史成就全弹一遍）
+        if (!inited)
+        {
+            knownAchievementIds.Clear();
+            foreach (var a in state.achievements)
+            {
+                knownAchievementIds.Add(a.id);
+            }
+            inited = true;
+            return;
+        }
+
+        // 后续：发现新的成就 id -> 弹 Sidebar
+        foreach (var a in state.achievements)
+        {
+            if (knownAchievementIds.Add(a.id))
+            {
+                ShowAchievementUnlocked(a.name, a.description);
+            }
+        }
+    }
+
     /// <summary>
-    /// ����ӿڣ���ʾ �ɾͽ��� Sidebar
+    /// 对外接口：显示成就解锁 Sidebar
     /// </summary>
     public void ShowAchievementUnlocked(string title, string description = null)
     {
@@ -37,18 +73,22 @@ public class AchievementSidebarController : MonoBehaviour
         if (descriptionText == null) Debug.LogError("descriptionText is NULL");
         if (panel == null) Debug.LogError("panel is NULL");
 
-        // ����
-        titleText.text = $"�ɾͽ�����{title}";
+        // 标题
+        if (titleText != null)
+            titleText.text = $"成就解锁：{title}";
 
-        // ����
-        if (string.IsNullOrEmpty(description))
+        // 描述
+        if (descriptionText != null)
         {
-            descriptionText.gameObject.SetActive(false);
-        }
-        else
-        {
-            descriptionText.text = description;
-            descriptionText.gameObject.SetActive(true);
+            if (string.IsNullOrEmpty(description))
+            {
+                descriptionText.gameObject.SetActive(false);
+            }
+            else
+            {
+                descriptionText.text = description;
+                descriptionText.gameObject.SetActive(true);
+            }
         }
 
         if (currentRoutine != null)
@@ -70,9 +110,11 @@ public class AchievementSidebarController : MonoBehaviour
         while (t < slideDuration)
         {
             t += Time.deltaTime;
-            panel.anchoredPosition = Vector2.Lerp(from, to, t / slideDuration);
+            if (panel != null)
+                panel.anchoredPosition = Vector2.Lerp(from, to, t / slideDuration);
             yield return null;
         }
-        panel.anchoredPosition = to;
+        if (panel != null)
+            panel.anchoredPosition = to;
     }
 }

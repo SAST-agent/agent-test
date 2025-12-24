@@ -1,10 +1,21 @@
+using System.Collections;
+using System.Text;
 using UnityEngine;
+using UnityEngine.Networking;
 
 public class AnswerSubmitController : MonoBehaviour
 {
     // ======================
-    // 数据模型
+    // 数据模型（就放这里）
     // ======================
+
+    [System.Serializable]
+    public class AnswerRequest
+    {
+        public string murderer;
+        public string motivation;
+        public string method;
+    }
 
     [System.Serializable]
     public class AnswerResponse
@@ -15,114 +26,60 @@ public class AnswerSubmitController : MonoBehaviour
     }
 
     // ======================
-    // 当前选择
+    // Backend
     // ======================
+
+    public string baseUrl = "http://localhost:8082";
 
     public string selectedMurderer;
     public string motivationText;
     public string methodText;
 
-    private bool waitingResponse = false;
-
-    // ======================
-    // 对外接口
-    // ======================
-
     public void SubmitAnswer()
     {
-        if (!WsClient.Instance.IsConnected)
+        AnswerRequest req = new AnswerRequest
         {
-            Debug.LogError("[AnswerSubmit] WS not connected");
-            return;
-        }
-
-        if (waitingResponse)
-        {
-            Debug.Log("[AnswerSubmit] Already waiting response");
-            return;
-        }
-
-        waitingResponse = true;
-
-        WsActionRequest req = new WsActionRequest
-        {
-            request = "action",
-            token = ApiConfigService.Instance.token,
-            content = new AnswerActionContent
-            {
-                action = "answer",
-                murderer = selectedMurderer,
-                motivation = motivationText,
-                method = methodText
-            }
+            murderer = selectedMurderer,
+            motivation = motivationText,
+            method = methodText
         };
 
-        Debug.Log("[AnswerSubmit] Send answer");
+        Debug.Log("Ready for posting answers");
 
-        WsClient.Instance.ExpectNextMessage(OnAnswerResponse);
-        WsClient.Instance.Send(JsonUtility.ToJson(req));
+        StartCoroutine(PostAnswer(req));
     }
 
-    // ======================
-    // WS 回包处理
-    // ======================
-
-    private void OnAnswerResponse(string json)
+    private IEnumerator PostAnswer(AnswerRequest answer)
     {
-        waitingResponse = false;
+        string url = $"{baseUrl}/api/answer";
 
-        json = json.Trim('\uFEFF', '\u200B', '\u0000', ' ', '\n', '\r', '\t');
-        Debug.Log("[AnswerSubmit] Raw JSON:\n" + json);
+        string json = JsonUtility.ToJson(answer);
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
 
-        AnswerResponse resp;
+        UnityWebRequest request = new UnityWebRequest(url, "POST");
+        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+        Debug.Log("Posted answers!!");
 
-        try
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
         {
-            resp = JsonUtility.FromJson<AnswerResponse>(json);
+            Debug.LogError(request.error);
+            yield break;
         }
-        catch (System.Exception e)
-        {
-            Debug.LogError("[AnswerSubmit] JSON parse error: " + e.Message);
-            return;
-        }
+
+        AnswerResponse resp =
+            JsonUtility.FromJson<AnswerResponse>(request.downloadHandler.text);
 
         HandleResult(resp);
     }
 
-    // ======================
-    // 处理结果
-    // ======================
-
     private void HandleResult(AnswerResponse result)
     {
-        Debug.Log($"[AnswerSubmit] murderer: {result.murderer}");
-        Debug.Log($"[AnswerSubmit] motivation: {result.motivation}");
-        Debug.Log($"[AnswerSubmit] method: {result.method}");
-
-        // TODO:
-        // - 弹 UI 提示
-        // - 进入结算 / 下一阶段
-        // - 上报前端页面
-    }
-
-    // ======================
-    // WS JSON 映射
-    // ======================
-
-    [System.Serializable]
-    private class WsActionRequest
-    {
-        public string request;
-        public string token;
-        public AnswerActionContent content;
-    }
-
-    [System.Serializable]
-    private class AnswerActionContent
-    {
-        public string action;
-        public string murderer;
-        public string motivation;
-        public string method;
+        Debug.Log($"murderer: {result.murderer}");
+        Debug.Log($"motivation: {result.motivation}");
+        Debug.Log($"method: {result.method}");
     }
 }

@@ -5,25 +5,7 @@ using UnityEngine;
 public class AchievementPanelController : MonoBehaviour
 {
     // =========================
-    // 数据结构（与后端一致）
-    // =========================
-
-    [Serializable]
-    private class AchievementItemFromServer
-    {
-        public int id;
-        public string name;
-        public string description;
-    }
-
-    [Serializable]
-    private class AchievementResponse
-    {
-        public List<AchievementItemFromServer> achievements;
-    }
-
-    // =========================
-    // 成就总表（你定义的规则表）
+    // 成就总表（规则表）保持不变
     // =========================
 
     [Serializable]
@@ -61,99 +43,62 @@ public class AchievementPanelController : MonoBehaviour
     public AchievementItem itemPrefab;
 
     // =========================
-    // 内部状态
+    // 内部状态：已解锁集合
     // =========================
+    private readonly HashSet<string> unlockedKeys = new HashSet<string>();
 
-    private readonly HashSet<string> unlockedKeys = new();
-
-    private bool waitingResponse = false;
+    // =========================
+    // 方案A新增：缓存最新 ResultState（可选）
+    // =========================
+    private FrameDispatcher.ResultState latestState;
 
     private void OnEnable()
     {
+        // 打开面板就用“当前缓存”构建一次 UI
         RefreshAchievements();
     }
 
-    // =========================
-    // 对外接口
-    // =========================
-
-    public void RefreshAchievements()
+    // =================================================
+    // ✅ 方案A核心：由 FrameDispatcher 每帧调用
+    // =================================================
+    public void ApplyResultState(FrameDispatcher.ResultState state)
     {
-        if (!WsClient.Instance.IsConnected)
+        latestState = state;
+
+        // 如果面板当前正在显示，可选择实时刷新
+        // （不想每帧刷 UI，可以注释掉这行，仅在 OnEnable 刷）
+        if (isActiveAndEnabled && gameObject.activeInHierarchy)
         {
-            Debug.LogError("[AchievementPanel] WS not connected");
-            return;
+            RefreshAchievements();
         }
-
-        if (waitingResponse)
-        {
-            Debug.Log("[AchievementPanel] Already waiting response");
-            return;
-        }
-
-        waitingResponse = true;
-
-        WsActionRequest req = new WsActionRequest
-        {
-            request = "action",
-            token = ApiConfigService.Instance.token,
-            content = new AchievementActionContent
-            {
-                action = "achievement"
-            }
-        };
-
-        WsClient.Instance.ExpectNextMessage(OnAchievementResponse);
-        WsClient.Instance.Send(JsonUtility.ToJson(req));
     }
 
     // =========================
-    // WS 回包处理
+    // 对外接口：刷新成就 UI（不走网络）
     // =========================
-
-    private void OnAchievementResponse(string json)
+    public void RefreshAchievements()
     {
-        waitingResponse = false;
-
-        json = json.Trim('\uFEFF', '\u200B', '\u0000', ' ', '\n', '\r', '\t');
-        Debug.Log("[AchievementPanel] Raw JSON:\n" + json);
-
-        AchievementResponse response;
-
-        try
-        {
-            response = JsonUtility.FromJson<AchievementResponse>(json);
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("[AchievementPanel] JSON parse error: " + e.Message);
-            return;
-        }
-
         unlockedKeys.Clear();
 
-        if (response != null && response.achievements != null)
+        if (latestState != null && latestState.achievements != null)
         {
-            foreach (var a in response.achievements)
+            foreach (var a in latestState.achievements)
             {
+                // FrameDispatcher.Achievement: id/name/description
                 unlockedKeys.Add(a.id.ToString());
             }
         }
-
-        Debug.Log(
-            "[AchievementPanel] unlocked keys = " +
-            string.Join(",", unlockedKeys)
-        );
 
         BuildUI();
     }
 
     // =========================
-    // 构建 UI
+    // 构建 UI（保持你原来的逻辑）
     // =========================
-
     private void BuildUI()
     {
+        if (contentRoot == null || itemPrefab == null) return;
+
         foreach (Transform child in contentRoot)
             Destroy(child.gameObject);
 
@@ -161,32 +106,12 @@ public class AchievementPanelController : MonoBehaviour
         {
             bool unlocked = unlockedKeys.Contains(achievement.key);
 
-            AchievementItem item =
-                Instantiate(itemPrefab, contentRoot);
-
+            AchievementItem item = Instantiate(itemPrefab, contentRoot);
             item.SetData(
                 achievement.name,
                 achievement.description,
                 unlocked
             );
         }
-    }
-
-    // =========================
-    // WS JSON 映射
-    // =========================
-
-    [Serializable]
-    private class WsActionRequest
-    {
-        public string request;
-        public string token;
-        public AchievementActionContent content;
-    }
-
-    [Serializable]
-    private class AchievementActionContent
-    {
-        public string action;
     }
 }

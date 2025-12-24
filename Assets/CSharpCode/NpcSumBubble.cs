@@ -4,89 +4,61 @@ using UnityEngine;
 
 public class NpcSumBubble : MonoBehaviour
 {
+    // ======================
+    // Backend (legacy, unused in Saiblo/WS mode)
+    // 保留字段：避免 Inspector 引用丢失、减少项目改动
+    // ======================
+    [Header("Backend (Legacy / Unused)")]
+    public string baseUrl = "http://localhost:8082";
+    public float timeoutSeconds = 10f;
+
     // 当前应该显示问号的 NPC（npcId 集合）
-    private readonly HashSet<string> npcWithQuestionMark = new();
+    private HashSet<string> npcWithQuestionMark = new HashSet<string>();
 
-    private bool waitingResponse = false;
-
-    void Start()
+    private void Start()
     {
-        if (WsClient.Instance != null && WsClient.Instance.IsConnected)
-            RefreshNpcMark();
-        else
-            WsClient.Instance.OnConnected += RefreshNpcMark;
+        // ✅ 方案A：不再 Start 时 HTTP 拉取
+        // 等待 FrameDispatcher 推送 result_state 后再更新
+        // 如果你担心“第一帧没来之前要不要隐藏”，可以在 Awake/Start 主动全关一次
+        ApplyMarksToNpcs(); // 初始按空集合：全隐藏
     }
 
     // =================================================
-    // 对外接口：刷新所有 NPC 问号
+    // ✅ 方案A核心：由 FrameDispatcher 每帧调用
+    // 从 result_state.npc_marks 里解析哪些 npcId 需要显示问号
     // =================================================
-    public void RefreshNpcMark()
+    public void ApplyResultState(FrameDispatcher.ResultState state)
     {
-        if (!WsClient.Instance.IsConnected)
-        {
-            Debug.LogError("[NpcSumBubble] WS not connected");
-            return;
-        }
-
-        if (waitingResponse)
-        {
-            Debug.Log("[NpcSumBubble] Already waiting marks response");
-            return;
-        }
-
-        waitingResponse = true;
-
-        WsActionRequest req = new WsActionRequest
-        {
-            request = "action",
-            token = ApiConfigService.Instance.token,
-            content = new MarksActionContent
-            {
-                action = "marks"
-            }
-        };
-
-        WsClient.Instance.ExpectNextMessage(OnMarksResponse);
-        WsClient.Instance.Send(JsonUtility.ToJson(req));
-    }
-
-    // =================================================
-    // WS 回包处理
-    // =================================================
-    private void OnMarksResponse(string json)
-    {
-        waitingResponse = false;
-
-        // ⭐ 清理 BOM / 不可见字符（你之前踩过的坑）
-        json = json.Trim('\uFEFF', '\u200B', '\u0000', ' ', '\n', '\r', '\t');
-
-        Debug.Log($"[NpcSumBubble] marks raw json = {json}");
-
-        // =================================================
-        // 解析所有字符串 key
-        // =================================================
-        HashSet<string> allStrings =
-            SimpleJsonArrayParser.ParseStringArray(json);
+        if (state == null) return;
 
         npcWithQuestionMark.Clear();
 
-        foreach (string npcId in allStrings)
+        // npc_marks 是 List<string>：里面就是需要显示问号的 npcId
+        if (state.npc_marks != null)
         {
-            if (json.Contains($"\"{npcId}\":true"))
+            foreach (var npcId in state.npc_marks)
             {
-                npcWithQuestionMark.Add(npcId);
+                if (!string.IsNullOrWhiteSpace(npcId))
+                    npcWithQuestionMark.Add(npcId);
             }
         }
 
-        Debug.Log(
-            $"[NpcSumBubble] NPCs with mark = {string.Join(", ", npcWithQuestionMark)}"
-        );
+        ApplyMarksToNpcs();
+    }
 
+
+    // =================================================
+    // 对外接口：刷新所有 NPC 问号
+    // 方案A下不再网络拉取，只是“按当前缓存状态重新应用”
+    // =================================================
+    public void RefreshNpcMark()
+    {
         ApplyMarksToNpcs();
     }
 
     // =================================================
     // 分发给每个 NPC
+    // （保持你原来的逻辑：遍历 transform 子物体，找 NpcIdentity + NPCDialogueTrigger）
     // =================================================
     private void ApplyMarksToNpcs()
     {
@@ -105,25 +77,7 @@ public class NpcSumBubble : MonoBehaviour
             bool visible = npcWithQuestionMark.Contains(npcId);
             trigger.RefreshBubbleVisibility(visible);
 
-            Debug.Log($"[NpcSumBubble] NPC {npcId} bubble = {visible}");
+            // Debug.Log($"[NpcSumBubble] NPC {npcId} bubble = {visible}");
         }
-    }
-
-    // =================================================
-    // WS JSON 映射
-    // =================================================
-
-    [Serializable]
-    private class WsActionRequest
-    {
-        public string request;
-        public string token;
-        public MarksActionContent content;
-    }
-
-    [Serializable]
-    private class MarksActionContent
-    {
-        public string action;
     }
 }

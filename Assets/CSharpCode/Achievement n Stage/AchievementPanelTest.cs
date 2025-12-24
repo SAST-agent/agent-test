@@ -1,31 +1,31 @@
-using System.Collections;
+ï»¿using System.Collections;
 using UnityEngine;
 
 public class AchievementPanelTest : MonoBehaviour
 {
     public RectTransform panel;
 
-    public Vector2 hiddenPos = new Vector2(400, 0); // ÆÁÄ»Íâ
-    public Vector2 shownPos = Vector2.zero;          // ÆÁÄ»ÄÚ
+    public Vector2 hiddenPos = new Vector2(400, 0); // ï¿½ï¿½Ä»ï¿½ï¿½
+    public Vector2 shownPos = Vector2.zero;          // ï¿½ï¿½Ä»ï¿½ï¿½
     public float slideDuration = 0.3f;
     public float stayTime = 5f;
 
     void Start()
     {
-        // Æô¶¯Ê±×Ô¶¯²âÊÔ
+        // ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½
         panel.anchoredPosition = hiddenPos;
         StartCoroutine(TestRoutine());
     }
 
     IEnumerator TestRoutine()
     {
-        // Æ½ÒÆ½øÀ´
+        // Æ½ï¿½Æ½ï¿½ï¿½ï¿½
         yield return StartCoroutine(Slide(hiddenPos, shownPos));
 
-        // Í£Áô 5 Ãë
+        // Í£ï¿½ï¿½ 5 ï¿½ï¿½
         yield return new WaitForSeconds(stayTime);
 
-        // Æ½ÒÆ³öÈ¥
+        // Æ½ï¿½Æ³ï¿½È¥
         yield return StartCoroutine(Slide(shownPos, hiddenPos));
     }
 

@@ -1,95 +1,51 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 public class RefreshEvidence : MonoBehaviour
 {
-    // ��ǰ�׶�
+    // ======================
+    // Backend (legacy, unused in Saiblo/WS mode)
+    // ======================
+    [Header("Backend (Legacy / Unused)")]
+    public string baseUrl = "http://localhost:8082";
+    public float timeoutSeconds = 10f;
+
+    // 当前阶段
     private int currentStage = -1;
 
-    // ��Ʒ������ Inspector ���� ItemBar��
+    // 物品栏（在 Inspector 里拖 ItemBar）
     public GameObject itemBar;
-
-    private bool waitingResponse = false;
 
     private void Start()
     {
-        if (WsClient.Instance != null && WsClient.Instance.IsConnected)
-            Refresh();
-        else
-            WsClient.Instance.OnConnected += Refresh;
+        // ✅ 方案A：不再 Start 时 HTTP 拉取
+        // 等 FrameDispatcher 推送 result_state 后再更新
+        // 也可以先做一次“全隐藏”兜底（按你项目需要）
+        ApplyStageToUI(-1);
     }
 
-    // =========================
-    // ����ӿ�
-    // =========================
-    public void Refresh()
+    // =================================================
+    // ✅ 方案A核心：由 FrameDispatcher 每帧调用
+    // =================================================
+    public void ApplyResultState(FrameDispatcher.ResultState state)
     {
-        if (!WsClient.Instance.IsConnected)
-        {
-            Debug.LogError("[RefreshEvidence] WS not connected");
-            return;
-        }
+        if (state == null) return;
 
-        if (waitingResponse)
-        {
-            Debug.Log("[RefreshEvidence] Already waiting response");
-            return;
-        }
+        // 方案A最小改动：继续按 stage 控制显示
+        // 如果你想更准确（不依赖 stage），可以改成用 state.visible_evidences
+        int stage = state.stage;
 
-        waitingResponse = true;
+        // 没变化就不刷（可选优化）
+        if (stage == currentStage) return;
 
-        WsActionRequest req = new WsActionRequest
-        {
-            request = "action",
-            token = ApiConfigService.Instance.token,
-            content = new ActionContent
-            {
-                action = "stage"
-            }
-        };
-
-        WsClient.Instance.ExpectNextMessage(OnStageResponse);
-        WsClient.Instance.Send(JsonUtility.ToJson(req));
+        currentStage = stage;
+        ApplyStageToUI(currentStage);
     }
 
     // =========================
-    // WS �ذ�����
+    // 根据 Stage 显示证物（复用你原逻辑）
     // =========================
-    private void OnStageResponse(string json)
-    {
-        waitingResponse = false;
-
-        json = json.Trim('\uFEFF', '\u200B', '\u0000', ' ', '\n', '\r', '\t');
-        Debug.Log("[RefreshEvidence] Raw JSON: " + json);
-
-        StageResponse response;
-
-        try
-        {
-            response = JsonUtility.FromJson<StageResponse>(json);
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("[RefreshEvidence] JSON parse error: " + e.Message);
-            return;
-        }
-
-        if (response == null)
-        {
-            Debug.LogError("[RefreshEvidence] StageResponse parse failed");
-            return;
-        }
-
-        currentStage = response.stage;
-        Debug.Log($"[RefreshEvidence] Current Stage = {currentStage}");
-
-        ShowEvidenceForStage();
-    }
-
-    // =========================
-    // ���� Stage ��ʾ֤��
-    // =========================
-    private void ShowEvidenceForStage()
+    private void ApplyStageToUI(int stage)
     {
         if (itemBar == null)
         {
@@ -97,37 +53,24 @@ public class RefreshEvidence : MonoBehaviour
             return;
         }
 
-        if (currentStage >= 2)
-        {
-            itemBar.transform.GetChild(1).gameObject.SetActive(true);
-        }
+        // 先把相关证物隐藏（避免上一局残留）
+        SetChildActiveSafe(itemBar.transform, 1, false);
+        SetChildActiveSafe(itemBar.transform, 2, false);
 
-        if (currentStage >= 8)
-        {
-            itemBar.transform.GetChild(2).gameObject.SetActive(true);
-        }
+        // 再按 stage 解锁
+        if (stage >= 2)
+            SetChildActiveSafe(itemBar.transform, 1, true);
+
+        if (stage >= 8)
+            SetChildActiveSafe(itemBar.transform, 2, true);
     }
 
-    // =========================
-    // WS JSON ӳ��
-    // =========================
-    [Serializable]
-    private class WsActionRequest
+    private void SetChildActiveSafe(Transform parent, int childIndex, bool active)
     {
-        public string request;
-        public string token;
-        public ActionContent content;
-    }
+        if (parent == null) return;
+        if (childIndex < 0 || childIndex >= parent.childCount) return;
 
-    [Serializable]
-    private class ActionContent
-    {
-        public string action;
-    }
-
-    [Serializable]
-    private class StageResponse
-    {
-        public int stage;
+        var go = parent.GetChild(childIndex).gameObject;
+        if (go != null) go.SetActive(active);
     }
 }
